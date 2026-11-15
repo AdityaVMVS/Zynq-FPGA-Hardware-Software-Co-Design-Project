@@ -1,0 +1,3 @@
+PASS: 12 IP file references exist; BD/IP VLNV user.org:user:multiply:1.0 matches
+PASS: device/tool metadata and BD mapping 0x43C00000/64K match
+PASS: reconstructed built-in source matches canonical Lab 6 driver

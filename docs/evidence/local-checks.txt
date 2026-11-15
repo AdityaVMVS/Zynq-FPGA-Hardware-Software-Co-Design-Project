@@ -1,0 +1,14 @@
+Local validation, 2026-11-14 America/Chicago
+Fetched GitHub HEAD: d26f5555f9a756b3affcb979094dddd297337a3e
+Host compiler: gcc.exe (Rev3, Built by MSYS2 project) 13.2.0
+Command: gcc -std=c11 -Wall -Wextra -Werror -O2 software/linux/userspace/devtest.c -o <TEMP>/axi-devtest.exe
+Result: exit 0, no compiler diagnostics.
+Command: <TEMP>/axi-devtest.exe <TEMP>/axi-device-does-not-exist
+Result: No such file or directory; exit 1, as expected.
+Command: git diff --check
+Result: exit 0, no whitespace errors.
+Source comparison: Lab 6 multiply.c SHA-256 matches repository character driver.
+Preset comparison: Lab 3 and Lab 4 presets match each other byte-for-byte;
+repository preset matches them with end-of-line differences ignored.
+No hardware test, target kernel compilation, RTL simulation, Vivado build,
+or PetaLinux build performed. No complete 289-case hardware pass claimed.

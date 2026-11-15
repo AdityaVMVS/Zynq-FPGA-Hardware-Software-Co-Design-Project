@@ -1,0 +1,7 @@
+Manual transcription of selected visible lines from report-image1.png.
+Historical screenshot evidence, not a newly captured or complete boot log.
+
+fpga_manager fpga0: Xilinx Zynq FPGA Manager registered
+Registered device with major number 244
+mknod /dev/multiplier c 244 0
+NET: Registered PF_INET6 protocol family

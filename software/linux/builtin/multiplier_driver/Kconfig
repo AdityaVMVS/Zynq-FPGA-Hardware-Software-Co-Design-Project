@@ -1,0 +1,7 @@
+# Reconstructed from the Lab 7 report; exact historical text was not supplied.
+config MULTIPLIER_DRIVER
+	tristate "AXI multiplier character driver"
+	depends on ARM
+	help
+	  Expose the lab multiplier through the manually created /dev/multiplier.
+	  Select Y for registration during boot. Verify the fixed MMIO address.

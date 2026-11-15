@@ -1,0 +1,9 @@
+SUMMARY = "Multiplier character device driver"
+SECTION = "PETALINUX/modules"
+LICENSE = "CLOSED"
+
+SRC_URI = "file://multiplier.c"
+
+S = "${WORKDIR}"
+
+inherit module

@@ -1,0 +1,136 @@
+#include <linux/module.h>    // Needed for all kernel modules
+#include <linux/kernel.h>    // Kernel logging macros like printk
+#include <linux/init.h>      // Macros for module init/exit functions
+#include <linux/fs.h>        // File operations structure and register_chrdev
+#include <linux/io.h>        // ioremap, ioread8, iowrite8 for memory-mapped I/O
+#include <linux/uaccess.h>   // put_user and get_user for user/kernel data transfer
+
+#define DEVICE_NAME "multiplier"   // Name of the character device
+
+// Physical base address and span of the multiplier hardware peripheral
+#define MULTIPLIER_BASEADDR  0x43C00000
+#define MULTIPLIER_SPAN      0x10000
+
+static int Major;                   // Stores dynamically assigned major number
+static void __iomem *multiplier_ptr; // Virtual pointer to mapped hardware registers
+
+/* Function prototypes */
+static int device_open(struct inode *, struct file *);
+static int device_release(struct inode *, struct file *);
+static ssize_t device_read(struct file *, char __user *, size_t, loff_t *);
+static ssize_t device_write(struct file *, const char __user *, size_t, loff_t *);
+
+/* File operations structure: connects system calls to driver functions */
+static struct file_operations fops = {
+    .owner = THIS_MODULE,
+    .read = device_read,
+    .write = device_write,
+    .open = device_open,
+    .release = device_release
+};
+
+/* Module initialization function */
+static int __init multiplier_init(void)
+{
+    // Map the physical hardware address into kernel virtual memory
+    multiplier_ptr = ioremap(MULTIPLIER_BASEADDR, MULTIPLIER_SPAN);
+    if (!multiplier_ptr) {
+        printk(KERN_ALERT "Failed to map multiplier peripheral\n");
+        return -ENOMEM;
+    }
+
+    // Register character device and let kernel choose a major number
+    Major = register_chrdev(0, DEVICE_NAME, &fops);
+    if (Major < 0) {
+        printk(KERN_ALERT "Registering device failed: %d\n", Major);
+        iounmap(multiplier_ptr); // Clean up mapped memory if registration fails
+        return Major;
+    }
+
+    // Print setup information to kernel log
+    printk(KERN_INFO "Registered device with major number %d\n", Major);
+    printk(KERN_INFO "mknod /dev/%s c %d 0\n", DEVICE_NAME, Major);
+
+    return 0;
+}
+
+/* Module cleanup function */
+static void __exit multiplier_exit(void)
+{
+    unregister_chrdev(Major, DEVICE_NAME); // Remove character device registration
+    iounmap(multiplier_ptr);               // Unmap hardware registers
+    printk(KERN_INFO "Multiplier driver removed\n");
+}
+
+/* Called when user opens /dev/multiplier */
+static int device_open(struct inode *inode, struct file *file)
+{
+    printk(KERN_INFO "Multiplier device opened\n");
+    return 0;
+}
+
+/* Called when user closes /dev/multiplier */
+static int device_release(struct inode *inode, struct file *file)
+{
+    printk(KERN_INFO "Multiplier device closed\n");
+    return 0;
+}
+
+/* Read up to 12 bytes from hardware registers */
+static ssize_t device_read(struct file *filp, char __user *buffer,
+                           size_t length, loff_t *offset)
+{
+    int i;
+    unsigned char value;
+
+    // Limit read size to 12 bytes:
+    // bytes 0-3  -> first operand
+    // bytes 4-7  -> second operand
+    // bytes 8-11 -> multiplication result
+    if (length > 12)
+        length = 12;
+
+    // Read one byte at a time from mapped peripheral registers
+    for (i = 0; i < length; i++) {
+        value = ioread8(multiplier_ptr + i);
+
+        // Copy byte to user-space buffer
+        if (put_user(value, buffer + i))
+            return -EFAULT;
+    }
+
+    return i; // Number of bytes successfully read
+}
+
+/* Write up to 8 bytes to hardware registers */
+static ssize_t device_write(struct file *file, const char __user *buffer,
+                            size_t length, loff_t *offset)
+{
+    int i;
+    unsigned char value;
+
+    // Limit write size to 8 bytes:
+    // bytes 0-3 -> first input operand
+    // bytes 4-7 -> second input operand
+    if (length > 8)
+        length = 8;
+
+    // Copy bytes from user space and write into peripheral registers
+    for (i = 0; i < length; i++) {
+        if (get_user(value, buffer + i))
+            return -EFAULT;
+
+        iowrite8(value, multiplier_ptr + i);
+    }
+
+    return i; // Number of bytes successfully written
+}
+
+// Module metadata
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Aditya");
+MODULE_DESCRIPTION("Multiplier Character Device Driver");
+
+// Entry and exit points for the kernel module
+module_init(multiplier_init);
+module_exit(multiplier_exit);

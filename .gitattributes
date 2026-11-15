@@ -1,0 +1,13 @@
+# Preserve recovered originals byte-for-byte, including existing whitespace.
+hardware/ip/multiply_1_0/** -text -whitespace
+hardware/vivado/lab4_block_design.bd -text
+software/linux/chardev/multiple.report-original.c.txt -text -whitespace
+software/linux/builtin/multiplier_driver/multiplier.c -text -whitespace
+petalinux/reference/multiply.bb.txt -text -whitespace
+
+# Keep newly maintained documentation and helpers portable across platforms.
+*.md text eol=lf
+*.py text eol=lf
+hardware/vivado/recreate.tcl text eol=lf
+software/linux/builtin/multiplier_driver/Kconfig text eol=lf
+software/linux/builtin/multiplier_driver/Makefile text eol=lf
