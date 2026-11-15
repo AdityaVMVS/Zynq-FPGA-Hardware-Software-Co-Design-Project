@@ -1,19 +1,29 @@
-# Lab 7 built-in kernel integration reconstruction
+# Built-in multiplier driver
 
-The Lab 7 report describes a `drivers/multiplier_driver/` directory, ARM-dependent tristate `MULTIPLIER_DRIVER`, and `obj-$(CONFIG_MULTIPLIER_DRIVER) += multiplier.o`. It does not supply the edited kernel tree or screenshots of Kconfig/Makefile. The files here reconstruct that described integration; they are not recovered historical kernel edits. `multiplier.c` is a copy of the repository's original Lab 6 driver, with its limitations intact. The more heavily commented parent-folder source is preserved separately as `../chardev/multiple.report-original.c.txt`; source screenshots match that variant.
+A built-in driver is linked into the Linux kernel and initialized during boot. This avoids loading a separate `.ko` file after startup. Lab 7 uses this approach for the multiplier character device.
 
-Copy `multiplier_driver/` into the matching kernel's `drivers/` directory. Add these entries to the kernel's existing files (do not replace them):
+`multiplier_driver/` contains the driver source, its Kconfig option, and its kernel Makefile. The integration files follow the Lab 7 report; the exact lab kernel tree and configuration are not available. This version has not been target-built.
+
+## Add the driver to a kernel tree
+
+Copy `multiplier_driver/` into the kernel's `drivers/` directory. Add this line to `drivers/Makefile`:
 
 ```make
-# drivers/Makefile
 obj-$(CONFIG_MULTIPLIER_DRIVER) += multiplier_driver/
 ```
 
+Add the following inside the existing menu in `drivers/Kconfig`:
+
 ```kconfig
-# drivers/Kconfig, inside the existing driver menu
 source "drivers/multiplier_driver/Kconfig"
 ```
 
-Enable `CONFIG_MULTIPLIER_DRIVER=y` in the actual target kernel configuration and build using the project's matching PetaLinux/kernel sources. Do not also enable the loadable multiplier recipe. `module_init(multiplier_init)` becomes a boot initcall when linked built-in; it does not by itself prove how an existing image was linked. The report describes using external kernel sources under `components/ext_sources`, but that tree, exact kernel revision and complete project configuration remain missing. These reconstructed files have not been target-built.
+Enable `CONFIG_MULTIPLIER_DRIVER=y` in the target kernel configuration. The option depends on ARM. Choosing `y` links the driver into the kernel; choosing `m` builds a loadable module. Build the kernel using the matching PetaLinux environment.
 
-The [boot screenshot](../../../docs/evidence/lab7/report-image1.png) shows `Registered device with major number 244` and `mknod /dev/multiplier c 244 0` between FPGA manager and network initialization messages, supporting historical registration during kernel boot. The [test screenshot](../../../docs/evidence/lab7/report-image3.png) shows manual device-node creation and a partial interactive operand sweep. Neither is a fresh test of this reconstruction. Use the dynamic major from the current boot rather than hard-coding 244.
+The driver's `module_init(multiplier_init)` becomes an initialization call during kernel boot when built in. The initialization maps the peripheral, registers a character device, and prints its major number. Create `/dev/multiplier` using the number from the current boot. The driver does not create the node automatically.
+
+## Test the interface
+
+The [boot screenshot](../../../docs/evidence/lab7/report-image1.png) shows registration during kernel initialization. The [application screenshot](../../../docs/evidence/lab7/report-image3.png) shows device-node creation and part of the interactive test.
+
+Use the userspace test in `software/linux/userspace/` for operand/readback checks. Run one client at a time because the driver does not lock a complete write/read transaction. Do not load another multiplier module while the built-in driver is active. A built-in driver cannot be removed with `rmmod`; changes require rebuilding and booting the kernel.

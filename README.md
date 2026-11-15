@@ -4,7 +4,7 @@ This project connects a custom multiplier built inside an FPGA to software runni
 
 The target is the **Digilent ZYBO Z7-10**, a development board containing a **Zynq-7000** chip. The chip combines a processor and programmable hardware. The project demonstrates how those two parts communicate, and how a hardware function becomes accessible through Linux.
 
-**Repository status:** the original multiplier hardware, packaged IP driver, Vivado block design, and application sources are available. Historical screenshots show multiplication, Linux boot, and driver registration. The complete PetaLinux project and original Lab 7 kernel changes are missing. The Lab 7 integration files here are explicitly reconstructed. The updated automated test compiles on the host; it has not been rerun on the board.
+The work covers hardware design in Vivado, standalone testing in Vitis, Linux boot with PetaLinux, and driver development. The main result is a character-device interface that lets a C application exchange operands and results with the FPGA through `/dev/multiplier`.
 
 ## Contents
 
@@ -37,7 +37,7 @@ The Zynq chip has two main parts:
 | Driver | Kernel software that handles access to the hardware on behalf of applications. |
 | Character device | A Linux interface accessed through file operations such as open, read, write, and close. Here it is `/dev/multiplier`. |
 | Bare metal | Running a program directly on the processor without Linux. |
-| Device tree | A description of hardware provided to Linux. The original project-specific device-tree source is missing. |
+| Device tree | A description of hardware provided to Linux. The project-specific device-tree source is not included. |
 
 The goal is to demonstrate the complete hardware/software interface. This repository does not establish that multiplying through system calls is faster than using a processor instruction.
 
@@ -73,7 +73,7 @@ The bare-metal application accesses the same kind of registers directly through 
 
 ## Understand the hardware interface
 
-The recovered block design assigns the peripheral a physical address window from **`0x43C00000` through `0x43C0FFFF`**, a total of **64 KiB**. The supplied software header and character-driver constants agree with this mapping.
+The block design assigns the peripheral a physical address window from **`0x43C00000` through `0x43C0FFFF`**, a total of **64 KiB**. The supplied software header and character-driver constants agree with this mapping.
 
 An **offset** is a distance from the base address. For example, the product register is at base plus 8: `0x43C00008`.
 
@@ -88,29 +88,29 @@ Although the address window is 64 KiB, the RTL selects registers using only addr
 
 Multiplying two 32-bit numbers can require a 64-bit answer. This design keeps only the low 32 bits, so large products are truncated. Its result also passes through two registered stages after an operand update. There is no ready/done register. Byte writes are supported through AXI write strobes, which identify the bytes to update. Processor/interconnect byte-lane behavior and timing still need end-to-end validation on the board.
 
-See [hardware implementation notes](hardware/README.md) for the recovered sources and the packaged self-test limitation.
+See [hardware implementation notes](hardware/README.md) for the implementation and the packaged self-test limitation.
 
 ## Explore the repository
 
 ```text
 hardware/
-  ip/multiply_1_0/          Original RTL, AXI slave, component.xml, and IP drivers
-  vivado/                  Original Lab 4 block design and new import helper
+  ip/multiply_1_0/          Multiplier RTL, AXI slave, IP metadata, and drivers
+  vivado/                  Zynq block design and project setup script
   board/                   ZYBO processing-system preset
   constraints/             Earlier GPIO lab pin constraints
 software/
-  baremetal/multiply_test/ Original standalone Vitis application
+  baremetal/multiply_test/ Standalone Vitis application
   linux/mmio/              Lab 5 hello and 32-bit MMIO modules
   linux/chardev/           Lab 6 byte-wise character driver
-  linux/userspace/         Revised automated operand/product test
-  linux/builtin/           Labeled reconstruction of Lab 7 kernel integration
-petalinux/                 Original recipe draft and recovery notes
+  linux/userspace/         Automated operand/product test
+  linux/builtin/           Built-in kernel driver integration
+petalinux/                 Module recipe draft and configuration notes
 examples/gpio/             Earlier MicroBlaze GPIO applications
-docs/                     Reports, screenshots, source audit, and check records
+docs/                     Lab reports, screenshots, and validation notes
 tools/                    Source-package consistency checker
 ```
 
-The folders distinguish original files from newly authored helpers and reconstructed integration. [The source audit](docs/source-audit.md) records provenance, evidence limits, and missing material. Generated builds, compiled modules, complete BSP trees, and boot binaries are excluded. Rebuild those products using a matching toolchain and hardware platform.
+The hardware folder describes the FPGA circuit, while the software folder contains the programs that use it. Start with the standalone application to understand register access, then follow the MMIO and character-driver examples. Generated build directories and boot binaries are excluded to keep the repository focused on source code and documentation.
 
 ## Follow the development stages
 
@@ -130,7 +130,7 @@ MicroBlaze belongs to the introductory GPIO work. The multiplier/Linux stages us
 
 ### Required tools and equipment
 
-The hardware target is ZYBO Z7-10, device `xc7z010clg400-1`. The recovered block design records **Vivado 2023.1**. A historical Linux login screenshot identifies **PetaLinux 2023.1+release-S05010539**. The exact kernel revision and complete build configuration have not been recovered.
+The hardware target is ZYBO Z7-10, device `xc7z010clg400-1`. The block design records **Vivado 2023.1**. A historical Linux login screenshot identifies **PetaLinux 2023.1+release-S05010539**. The exact kernel revision and complete build configuration are not included.
 
 Use Vivado for FPGA design, Vitis and its board support package (BSP) for the standalone application, and a matching PetaLinux/ARM toolchain for Linux software. Board testing requires the board, appropriate power and USB connections, an SD card for the documented boot flow, and a serial terminal at 115200 baud. FPGA hardware and Linux kernel builds are not provided by a normal desktop C compiler.
 
@@ -142,7 +142,7 @@ From the repository root, run with Python 3:
 python tools/check_sources.py
 ```
 
-This checks the IP metadata's file references, its identity against the block design, device/tool metadata, address mapping, and the reconstructed driver's consistency with the original. It does not simulate Verilog or communicate with a board.
+This checks the IP metadata's file references, its identity against the block design, device/tool metadata, address mapping, and consistency between the two driver source files. It does not simulate Verilog or communicate with a board.
 
 You can compile the userspace test on a host with GCC:
 
@@ -154,29 +154,29 @@ A host build checks C compilation. Running it on an ordinary computer will fail 
 
 ### 2. Prepare the FPGA hardware
 
-The original packaged IP is in `hardware/ip/multiply_1_0/`. The original block design is in `hardware/vivado/lab4_block_design.bd`.
+The packaged IP is in `hardware/ip/multiply_1_0/`. The block design is in `hardware/vivado/lab4_block_design.bd`.
 
-The new convenience script creates a Vivado project, registers the IP directory, opens and validates the BD, and generates its wrapper:
+The project setup script creates a Vivado project, registers the IP directory, opens and validates the BD, and generates its wrapper:
 
 ```sh
 vivado -mode batch -source hardware/vivado/recreate.tcl
 ```
 
-It writes generated files under `build/vivado/`. It has not been executed in Vivado during this recovery. With the required IP installed, review validation results, then run synthesis, implementation, and bitstream generation in Vivado. Export the matching hardware platform as an XSA for Vitis/PetaLinux. The helper does not perform these final build/export steps.
+It writes generated files under `build/vivado/`. The script has not yet been tested in Vivado. With the required IP installed, review validation results, then run synthesis, implementation, and bitstream generation in Vivado. Export the matching hardware platform as an XSA for Vitis/PetaLinux. The helper does not perform these final build/export steps.
 
 ### 3. Run the bare-metal application
 
-In Vitis, create a standalone Cortex-A9 application using the matching exported hardware platform and BSP. Include the recovered multiply IP driver, then import the files in `software/baremetal/multiply_test/`.
+In Vitis, create a standalone Cortex-A9 application using the matching exported hardware platform and BSP. Include the multiply IP driver, then import the files in `software/baremetal/multiply_test/`.
 
-The application uses `MULTIPLY_mWriteReg` to write offsets 0 and 4 and `MULTIPLY_mReadReg` to read offset 8. It iterates over operands 0 through 16 and prints the values over UART. The original program prints results; it does not automatically assert that each product is correct.
+The application uses `MULTIPLY_mWriteReg` to write offsets 0 and 4 and `MULTIPLY_mReadReg` to read offset 8. It iterates over operands 0 through 16 and prints the values over UART. The standalone program prints results; it does not automatically assert that each product is correct.
 
 The wizard-generated `MULTIPLY_Reg_SelfTest` expects arbitrary writes to every register to read back unchanged. That expectation is incompatible with the product register. It must not be used as proof that this multiplier works.
 
 ### 4. Prepare Linux
 
-The historical flow imported the hardware into PetaLinux, built Linux, and booted from an SD card containing `BOOT.BIN`, `image.ub`, and `boot.scr`. These are generated boot products and are intentionally excluded.
+The Linux setup imports the hardware into PetaLinux, builds Linux, and boots from an SD card containing `BOOT.BIN`, `image.ub`, and `boot.scr`. These are generated boot products and are intentionally excluded.
 
-The complete PetaLinux project, device-tree modifications, and original kernel configuration are missing, so a reliable one-command Linux rebuild cannot be provided. [PetaLinux notes](petalinux/README.md) explain the recovered recipe draft, including its filename and dependency problems. Recover or recreate and validate that configuration before treating the build as reproducible.
+The complete PetaLinux project, device-tree modifications, and original kernel configuration are missing, so a reliable one-command Linux rebuild cannot be provided. [PetaLinux notes](petalinux/README.md) explain the recipe draft, including its filename and dependency problems. Complete and validate that configuration before attempting a full Linux rebuild.
 
 ### 5. Build a loadable module
 
@@ -224,7 +224,7 @@ Copy the executable to the board, then run:
 ./devtest /dev/multiplier
 ```
 
-The revised program tests all **289 operand pairs** from 0–16 × 0–16. It checks transfer lengths, both operand readbacks, and the product, and returns a nonzero exit status for errors. A successful run would print `289 cases: 289 passed, 0 failed`. That is the expected output, not a result obtained during this repository update.
+The program checks all **289 operand pairs** from 0–16 × 0–16. It checks transfer lengths, both operand readbacks, and the product, and returns a nonzero exit status for errors. A successful run would print `289 cases: 289 passed, 0 failed`. This is the expected output; a complete board run of this version is still pending.
 
 For the loadable character module, `rmmod multiply` removes it after applications have closed the device. A built-in driver remains part of the kernel.
 
@@ -232,13 +232,13 @@ For the loadable character module, `rmmod multiply` removes it after application
 
 A loadable module is inserted after Linux starts. A built-in driver is linked into the kernel image and initialized during boot. Lab 7 describes the second approach.
 
-[Built-in integration instructions](software/linux/builtin/README.md) provide the reconstructed driver directory, Kconfig entry, Makefile entry, and parent kernel edits. Select `CONFIG_MULTIPLIER_DRIVER=y` for built-in linkage. These files were reconstructed from the report narrative; the original edited kernel tree and `.config` were not supplied, and this reconstruction has not been target-built.
+[Built-in integration instructions](software/linux/builtin/README.md) provide the driver directory, Kconfig entry, Makefile entry, and parent kernel edits. Select `CONFIG_MULTIPLIER_DRIVER=y` for built-in linkage. The integration follows the Lab 7 report. The exact lab kernel tree and `.config` are not included, and the supplied integration has not been target-built.
 
 ## Understand the Linux driver
 
 The Lab 5 module uses 32-bit `iowrite32` / `ioread32` operations. The Lab 6 character driver uses byte-wise `iowrite8` / `ioread8` operations, with `get_user` and `put_user` to transfer bytes between application memory and kernel space.
 
-| Application operation | Original character-driver behavior |
+| Application operation | Character-driver behavior |
 | --- | --- |
 | `open` / `close` | Logs device activity |
 | `write` | Writes up to 8 bytes starting at the peripheral base |
@@ -247,33 +247,33 @@ The Lab 5 module uses 32-bit `iowrite32` / `ioread32` operations. The Lab 6 char
 
 Each number occupies four bytes in **little-endian** order: the least significant byte comes first. Bytes 0–3 contain operand A, bytes 4–7 contain operand B, and read bytes 8–11 contain the product. For example, 7 is encoded as `07 00 00 00`.
 
-Use **one client at a time**. The original driver has no transaction lock or exclusive-open rule. Another process can change the inputs between a write and its following read. Locking individual system calls would still leave that gap. The reads also occur one byte at a time, so the interface does not guarantee an atomic snapshot while values change. Byte writes expose intermediate operand values, and the hardware result has pipeline latency.
+Use **one client at a time**. The driver has no transaction lock or exclusive-open rule. Another process can change the inputs between a write and its following read. Locking individual system calls would still leave that gap. The reads also occur one byte at a time, so the interface does not guarantee an atomic snapshot while values change. Byte writes expose intermediate operand values, and the hardware result has pipeline latency.
 
-The driver uses a fixed address rather than obtaining a resource from a device-tree platform device, and it does not reserve the MMIO region. Those are limitations of the preserved educational implementation. They are reasons to review ownership, synchronization, and platform integration before extending it to multiple applications.
+The driver uses a fixed address rather than obtaining a resource from a device-tree platform device, and it does not reserve the MMIO region. Those are limitations of the educational implementation. They are reasons to review ownership, synchronization, and platform integration before extending it to multiple applications.
 
 ## Review validation and limitations
 
 | Evidence or check | What it establishes | Limit |
 | --- | --- | --- |
-| [Lab 3 UART capture](docs/evidence/lab3/report-image2.png) | Visible operand/product examples and end of the original application run | Does not show every pair or automatically assert correctness |
-| [Lab 4 Linux capture](docs/evidence/lab4/report-image1.png) | Historical Linux login and PetaLinux release banner | Does not reproduce the build configuration |
-| [Lab 5 MMIO capture](docs/evidence/lab5/report-image1.png) | Kernel module writes 7 and 2 and reads product 14 | One historical example |
+| [Lab 3 UART capture](docs/evidence/lab3/report-image2.png) | Visible operand/product examples and end of the application run | Does not show every pair or automatically assert correctness |
+| [Lab 4 Linux capture](docs/evidence/lab4/report-image1.png) | Linux login and PetaLinux release banner | Does not reproduce the build configuration |
+| [Lab 5 MMIO capture](docs/evidence/lab5/report-image1.png) | Kernel module writes 7 and 2 and reads product 14 | One operand example |
 | [Lab 6 captures](docs/evidence/lab6/) | Loadable registration, source screenshots, partial interactive tests | Not a complete automated test transcript |
 | [Lab 7 boot capture](docs/evidence/lab7/report-image1.png) | Registration messages appear during kernel initialization | Original linked kernel source/configuration remains missing |
-| Host GCC compilation | Revised test compiles with warnings treated as errors | No hardware access verified |
+| Host GCC compilation | Test compiles with warnings treated as errors | No hardware access verified |
 | Source checker | Metadata references and hardware/software mapping agree | No HDL simulation, synthesis, or kernel build |
 
 The Lab 7 [image-size screenshot](docs/evidence/lab7/report-image2.png) shows `image.ub` shrinking from 17,616,680 to 16,514,804 bytes: **1,101,876 bytes, about 1.05 MiB**. This corrects the report's approximately 1 KB statement. These are sizes of complete boot images; the capture does not isolate kernel code size or prove which option caused each saved byte.
 
-No Vivado/PetaLinux build, target kernel build, or board test was rerun during source recovery. A complete 289-case hardware pass for the revised test remains pending. A full reproduction still needs the complete PetaLinux configuration/device tree, exact kernel revision, and original Lab 7 edits or a validated replacement.
+The current source package has not been rebuilt in Vivado/PetaLinux or tested again on the board. A complete 289-case hardware pass for the revised test remains pending. A full reproduction still needs the complete PetaLinux configuration/device tree, exact kernel revision, and original Lab 7 edits or a validated replacement.
 
-[The source audit](docs/source-audit.md) and [local check records](docs/evidence/) provide the detailed provenance and validation boundaries. Future validation should record source revision, kernel version, hardware/image identity, complete test output, and exit status. The small operand sweep does not cover overflow, all byte lanes, or concurrent access.
+[Validation notes](docs/validation.md) describe the available results and remaining checks. Future validation should record source revision, kernel version, hardware/image identity, complete test output, and exit status. The small operand sweep does not cover overflow, all byte lanes, or concurrent access.
 
 ## Troubleshooting
 
 | Symptom | What to check |
 | --- | --- |
-| `multiply.h` is missing in Vitis | Include the recovered IP driver in the matching BSP/platform. |
+| `multiply.h` is missing in Vitis | Include the IP driver in the matching BSP/platform. |
 | Test cannot open `/dev/multiplier` | Check driver registration, node spelling, current major number, and permissions. |
 | Module reports an invalid format | Rebuild against the board's exact kernel configuration/version and target architecture. |
 | Wrong operand or product values | Confirm the programmed hardware matches the address map; check byte lanes, result timing, and competing clients. |
@@ -283,4 +283,4 @@ No Vivado/PetaLinux build, target kernel build, or board test was rerun during s
 
 ## License and attribution
 
-See [LICENSE](LICENSE) for the repository license. Individual files retain their original notices and terms, including Xilinx application/platform code and GPL-declared Linux modules. The top-level license does not override those notices. Original source files and reports are preserved; newly authored helpers and reconstructed files are identified in their documentation.
+See [LICENSE](LICENSE) for the repository license. Individual files retain their original notices and terms, including Xilinx application/platform code and GPL-declared Linux modules. The top-level license does not override those notices. Keep these notices when reusing or modifying the source.

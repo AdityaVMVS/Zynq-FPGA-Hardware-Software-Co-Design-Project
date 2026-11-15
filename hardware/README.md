@@ -1,18 +1,43 @@
-# Recovered multiplier hardware
+# Multiplier hardware
 
-`ip/multiply_1_0/` is copied unchanged from the parent workspace's `LAB4/ip_repo/multiply_1_0/`, including component.xml, RTL, software driver, GUI/BD Tcl, and generated example designs. All supplied notices remain in place. `vivado/lab4_block_design.bd` is the original Lab 4 BD, recorded as Vivado 2023.1 targeting `xc7z010clg400-1`. Its address segment maps the custom IP at `0x43C00000` for 64 KiB. The PS, AXI interconnect, clock, and reset connections are in the BD.
+This folder contains the FPGA design for the AXI4-Lite multiplier. The ARM processor writes two operands through the AXI bus and reads the product from a register.
 
-`vivado/recreate.tcl` is a newly authored import/wrapper-generation helper, not a recovered export or a verified build. Run it from Vivado 2023.1 with the required Xilinx IP installed. Generated products go to ignored `build/vivado/`. No Vivado installation capable of executing this flow was available for this update.
-
-The 32-bit AXI slave decodes address bits [3:2]. Operand writes honor each WSTRB byte lane; reads return the selected full word, leaving byte-lane selection to the AXI interconnect/processor. This supports the intended byte-wise Lab 6 interface by source inspection; physical integration still needs a board test. Only the low four address bits enter this IP, so the 16-byte register bank aliases through the larger assigned window.
-
-| Offset | Recovered RTL behavior |
+| Folder | Purpose |
 | --- | --- |
-| 0x00 | Operand A, read/write, byte strobes honored |
-| 0x04 | Operand B, read/write, byte strobes honored |
-| 0x08 | Read-only low 32 bits of product; AXI writes have no effect |
-| 0x0c | Independent read/write scratch register, not upper product bits |
+| `ip/multiply_1_0/hdl/` | Verilog multiplier and AXI4-Lite register interface |
+| `ip/multiply_1_0/component.xml` | IP metadata used by the Vivado IP catalog |
+| `ip/multiply_1_0/drivers/` | Vitis register-access macros and driver support files |
+| `ip/multiply_1_0/xgui/` and `bd/` | Vivado customization and block-design support |
+| `ip/multiply_1_0/example_designs/` | Example simulation and hardware-test projects |
+| `vivado/` | Zynq block design and project setup script |
+| `board/` | ZYBO processing-system preset |
+| `constraints/` | Pin assignments for the earlier GPIO exercises |
 
-`tmp_reg <= slv_reg0 * slv_reg1; slv_reg2 <= tmp_reg;` forms two registered stages after operand update, with truncation to 32 bits and no ready/done bit. Intermediate products occur during byte-wise operand writes. The driver reads operands before product, but this is not a general synchronization contract for a future faster client or changed hardware.
+## Register operation
 
-The packaged `MULTIPLY_Reg_SelfTest` is an unmodified wizard test that expects all four registers to echo arbitrary writes. It is incompatible with the read-only product register and must not be presented as a passing multiplier test. Use the application operand/product test instead. Supplied BFM examples also require review and Vivado simulation support; they have not been run.
+The block design targets `xc7z010clg400-1` and assigns the multiplier base address `0x43C00000` with a 64 KiB window.
+
+| Offset | Function |
+| --- | --- |
+| `0x00` | Read/write operand A |
+| `0x04` | Read/write operand B |
+| `0x08` | Read-only low 32 bits of the product |
+| `0x0c` | Read/write scratch register |
+
+The AXI interface uses address bits [3:2] to select a register. Each write strobe enables one byte lane, allowing software to update operands one byte at a time. Reads return the selected word. The register bank repeats within the larger address window, so applications should use the offsets above.
+
+The multiplier stores its result in `tmp_reg` and then transfers it to `slv_reg2` on the next clock. This adds two registered stages after an operand update. There is no done flag, and products larger than 32 bits are truncated. The scratch register does not store the upper half of the product.
+
+## Open the design
+
+Use Vivado 2023.1 and run from the repository root:
+
+```sh
+vivado -mode batch -source hardware/vivado/recreate.tcl
+```
+
+The script creates a project under `build/vivado/`, adds the custom IP, opens the block design, and generates its wrapper. Synthesis, implementation, bitstream generation, and hardware export are separate steps. The script still needs validation in Vivado.
+
+For the standalone application, include the multiply IP driver in the matching Vitis platform/BSP. Its access macros are `MULTIPLY_mWriteReg` and `MULTIPLY_mReadReg`.
+
+The packaged `MULTIPLY_Reg_SelfTest` assumes every register can store an arbitrary written value. That assumption is wrong for the product register. Use operand/product checks to test the multiplier; the example test projects have not been validated here.
