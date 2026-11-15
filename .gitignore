@@ -1,0 +1,14 @@
+*.o
+*.ko
+*.mod
+*.mod.c
+*.cmd
+Module.symvers
+modules.order
+.Xil/
+.metadata/
+*.cache/
+*.runs/
+*.gen/
+BOOT.BIN
+image.ub

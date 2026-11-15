@@ -62,7 +62,7 @@ The author's resume additionally describes:
 - A complete 289-case operand sweep.
 - Built-in kernel integration using Kconfig and Makefile entries, with registration at boot.
 
-Source code and execution logs for these additional stages are pending import. The reports currently in this repository do not independently establish those results. No hardware tests or Vivado/PetaLinux builds have been rerun as part of this documentation update.
+The imported Lab 6 character driver uses `get_user()` / `put_user()`, and its userspace test covers the 289 operand pairs. The repository test now checks operand readback, products, transfer lengths, and returns failure on errors. Hardware execution of this updated test remains pending. LAB7 supplied only `image.ub`; built-in integration source and boot-registration evidence remain pending. No hardware tests or Vivado/PetaLinux builds have been rerun as part of this documentation update.
 
 ## Tools and platform
 
@@ -74,3 +74,21 @@ Source code and execution logs for these additional stages are pending import. T
 ## License
 
 See [LICENSE](LICENSE).
+
+## Source layout and usage
+
+- `software/baremetal/multiply_test/`: original Vitis multiplier application and platform helpers. Create a standalone Cortex-A9 application using the matching XSA and BSP, including the custom multiply IP driver, then import these sources.
+- `software/linux/mmio/`: original Lab 5 hello and multiplier modules with supplied hardware headers.
+- `software/linux/chardev/`: original Lab 6 character driver with an added external-module Makefile.
+- `software/linux/userspace/devtest.c`: revised noninteractive 289-case test, based on the supplied Lab 6 test.
+- `hardware/constraints/`: introductory GPIO design constraints; these do not replace a multiplier block design.
+- `hardware/board/`: supplied ZYBO processing-system preset, not a complete hardware recreation script.
+- `examples/gpio/`: original MicroBlaze GPIO applications.
+
+Build either Linux module directory against the matching configured target kernel with `make KDIR=/path/to/kernel/build ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf-`. Use the cross compiler supplied by your PetaLinux SDK when its prefix differs. Do not load the MMIO and character-driver multiplier modules simultaneously.
+
+The character driver assumes physical base `0x43C00000` and span `0x10000`; verify these against the deployed hardware before loading. After `insmod multiply.ko`, obtain the dynamic major number from `dmesg` or `/proc/devices`, then create `/dev/multiplier` using `mknod /dev/multiplier c <major> 0` as root. The driver does not create the device node automatically.
+
+Compile the test for the target with `arm-linux-gnueabihf-gcc -std=c11 -Wall -Wextra -O2 software/linux/userspace/devtest.c -o devtest`, copy it to the board, and run `./devtest`. An optional first argument overrides the device path. The API writes eight little-endian operand bytes and reads twelve bytes containing both operands and the product. It uses snapshot semantics, ignoring file offsets. Run with one client: the original driver has no transaction locking across write/read calls. Its byte-wise MMIO behavior still requires validation against the actual AXI slave.
+
+Still needed for a reproducible full build: custom multiplier RTL and IP metadata, the Vivado block design or exported recreation Tcl, PetaLinux project configuration/recipes, and the actual Lab 7 Kconfig/Makefile/kernel source changes. Supplied boot images and compiled modules are excluded from source control. Original source copyright notices are preserved; consult them for third-party file terms.
